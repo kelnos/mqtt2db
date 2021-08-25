@@ -1,0 +1,19 @@
+[package]
+name = "mqtt2db"
+version = "0.1.0"
+authors = ["Brian J. Tarricone <brian@tarricone.org>"]
+edition = "2018"
+
+[dependencies]
+chrono = { version = "0.4", features = ["serde"] }
+clap = "2.33"
+env_logger = "0.9"
+futures = "0.3"
+influxdb = { version = "0.4", features = ["derive"] }
+lazy_static = "1"
+log = { version = "0.4", features = ["std", "serde"] }
+regex = "1"
+rumqttc = "0.8"
+serde = { version = "1", features = ["derive"] }
+serde_yaml = "0.8"
+tokio = { version = "1", features = ["fs", "io-std", "io-util", "macros", "rt", "rt-multi-thread"] }
