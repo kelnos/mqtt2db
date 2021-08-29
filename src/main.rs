@@ -153,9 +153,12 @@ async fn handle_publish(
         };
         query = query.add_tag(&tag.0, value);
     }
+
+    use tokio_compat_02::FutureExt;
     database
         .client
         .query(&query)
+        .compat()
         .await
         .map_err(|err| format!("Failed to write to DB: {}", err))?;
     debug!("wrote to influx: {:?}", query);
