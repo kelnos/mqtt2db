@@ -53,10 +53,22 @@ pub struct InfluxDBConfig {
     pub measurement: String,
 }
 
+#[derive(Debug, Deserialize, Clone)]
+#[serde(rename_all = "camelCase", tag = "type")]
+#[allow(non_camel_case_types)]
+pub enum Payload {
+    #[serde(rename_all = "camelCase")]
+    json {
+        value_field_name: String,
+        timestamp_field_name: Option<String>,
+    },
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Mapping {
     pub topic: String,
+    pub payload: Option<Payload>,
     pub field_name: String,
     pub value_type: ValueType,
     pub tags: HashMap<String, TagValue>,

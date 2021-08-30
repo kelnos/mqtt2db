@@ -1,7 +1,7 @@
 #[macro_use]
 extern crate log;
 
-use config::{Config, InfluxDBConfig, MqttAuth, MqttConfig, UserAuth};
+use config::{Config, InfluxDBConfig, MqttAuth, MqttConfig, Payload, UserAuth};
 use futures::TryFutureExt;
 use influxdb::InfluxDbWriteable;
 use influxdb::{Client as InfluxClient, Timestamp, Type};
@@ -11,6 +11,7 @@ use rumqttc::{
     AsyncClient as MqttAsyncClient, Event, EventLoop as MqttEventLoop, Key, MqttOptions, Packet,
     Publish, QoS, SubscribeFilter, TlsConfiguration, Transport,
 };
+use serde_json::Value as JsonValue;
 use std::convert::TryFrom;
 use std::env;
 use std::path::Path;
@@ -18,6 +19,7 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
+use value::ToInfluxType;
 
 mod config;
 mod interpolate;
@@ -135,15 +137,41 @@ async fn handle_publish(
         .collect::<Vec<&str>>();
     let field_name = mapping.field_name.interpolate(&reference_values)?;
 
-    let value = String::from_utf8(Vec::from(publish.payload.as_ref()))
+    let payload = String::from_utf8(Vec::from(publish.payload.as_ref()))
         .map_err(|err| format!("Invalid payload value: {}", err))?;
-    let influx_value = mapping.value_type.parse(&value)?;
+    let (influx_value, timestamp) = match &mapping.payload {
+        None => (payload.to_influx_type(mapping.value_type)?, None),
+        Some(Payload::json { value_field_name, timestamp_field_name }) => {
+            let payload_root: JsonValue = serde_json::from_str(&payload).map_err(|err| format!("Failed to parse payload as JSON: {}", err))?;
+            match payload_root {
+                JsonValue::Object(mut map) => map
+                    .remove(value_field_name)
+                    .ok_or_else(|| format!("Missing field '{}' in payload for '{}'", value_field_name, publish.topic))
+                    .and_then(|value| value.to_influx_type(mapping.value_type))
+                    .and_then(|influx_value| timestamp_field_name
+                        .as_ref()
+                        .and_then(|tsf| map
+                            .remove(tsf)
+                            .map(|timestamp_value| timestamp_value
+                                .as_u64()
+                                .map(|ts| ts as u128)
+                                .ok_or_else(|| format!("'{}' cannot be converted to timestamp", timestamp_value))
+                            )
+                        )
+                        .transpose()
+                        .map(|ts| (influx_value, ts))
+                    )?,
+                _ => return Err(format!("Payload for {} was not a JSON object", publish.topic)),
+            }
+        },
+    };
 
-    let now = SystemTime::now()
+    let timestamp = timestamp.unwrap_or_else(|| SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
-        .as_millis();
-    let mut query = Timestamp::Milliseconds(now)
+        .as_millis()
+    );
+    let mut query = Timestamp::Milliseconds(timestamp)
         .into_query(&database.measurement)
         .add_field(&field_name, influx_value);
     for tag in mapping.tags.iter() {

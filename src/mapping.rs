@@ -1,9 +1,9 @@
 use influxdb::Type;
 use std::convert::TryFrom;
 
-use crate::config::{Mapping as ConfigMapping, TagValue as ConfigTagValue};
+use crate::config::{Mapping as ConfigMapping, Payload, TagValue as ConfigTagValue};
 use crate::interpolate::{InterpolatedName, InterpolatedNamePart};
-use crate::value::ValueType;
+use crate::value::{ToInfluxType, ValueType};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum TopicLevel {
@@ -45,7 +45,7 @@ impl TryFrom<&ConfigTagValue> for TagValue {
                     _ => Ok(TagValue::InterpolatedStr(interp)),
                 }
             }
-            other => other.parse(&tag_value.value).map(TagValue::Literal),
+            other => tag_value.value.to_influx_type(other).map(TagValue::Literal),
         }
     }
 }
@@ -53,6 +53,7 @@ impl TryFrom<&ConfigTagValue> for TagValue {
 #[derive(Debug)]
 pub struct Mapping {
     pub topic: Vec<TopicLevel>,
+    pub payload: Option<Payload>,
     pub field_name: InterpolatedName,
     pub value_type: ValueType,
     pub tags: Vec<(String, TagValue)>,
@@ -108,6 +109,7 @@ impl TryFrom<&ConfigMapping> for Mapping {
 
         Ok(Mapping {
             topic,
+            payload: mapping.payload.as_ref().map(|p| p.clone()),
             field_name,
             value_type: mapping.value_type,
             tags,
@@ -135,6 +137,7 @@ mod test {
         fn mk_cfg_mapping(topic: &str) -> ConfigMapping {
             ConfigMapping {
                 topic: topic.to_string(),
+                payload: None,
                 field_name: "".to_string(),
                 value_type: ValueType::Text,
                 tags: HashMap::new(),
