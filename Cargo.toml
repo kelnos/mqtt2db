@@ -9,7 +9,7 @@ chrono = { version = "0.4", features = ["serde"] }
 clap = "2.33"
 env_logger = "0.9"
 futures = "0.3"
-influxdb = { version = "0.4", features = ["derive"] }
+influxdb = { version = "0.4", default-features = false, features = ["derive", "use-serde", "h1-client-rustls"] }
 lazy_static = "1"
 log = { version = "0.4", features = ["std", "serde"] }
 regex = "1"
