@@ -209,7 +209,7 @@ async fn run_event_loop(
             }
             Ok(Event::Incoming(_event)) => (),
             Ok(Event::Outgoing(_event)) => (),
-            Err(err) => warn!("Error from MQTT loop: {}", err),
+            Err(err) => warn!("Error from MQTT loop: {:#?}", err),
         }
     }
 }
