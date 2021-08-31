@@ -5,7 +5,6 @@ use config::{Config, InfluxDBConfig, MqttAuth, MqttConfig, UserAuth};
 use futures::TryFutureExt;
 use influxdb::InfluxDbWriteable;
 use influxdb::{Client as InfluxClient, Timestamp, Type};
-use log::LevelFilter;
 use mapping::{Mapping, Payload, TagValue, TopicLevel};
 use rumqttc::{
     AsyncClient as MqttAsyncClient, Event, EventLoop as MqttEventLoop, Key, MqttOptions, Packet,
@@ -253,9 +252,10 @@ async fn main() -> Result<(), String> {
         .filter("MQTT2DB_LOG")
         .write_style("MQTT2DB_LOG_STYLE");
     let mut logger_builder = env_logger::Builder::from_env(logger_env);
-    logger_builder
-        .filter_level(config.log_level.unwrap_or(LevelFilter::Info))
-        .init();
+    if let Some(log_level) = config.log_level {
+        logger_builder.filter_level(log_level);
+    }
+    logger_builder.init();
 
     let mappings: Vec<Arc<Mapping>> = config
         .mappings
