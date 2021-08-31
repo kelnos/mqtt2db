@@ -59,8 +59,8 @@ pub struct InfluxDBConfig {
 pub enum Payload {
     #[serde(rename_all = "camelCase")]
     json {
-        value_field_name: String,
-        timestamp_field_name: Option<String>,
+        value_field_path: String,
+        timestamp_field_path: Option<String>,
     },
 }
 

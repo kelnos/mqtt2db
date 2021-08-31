@@ -1,7 +1,8 @@
 use influxdb::Type;
-use std::convert::TryFrom;
+use jsonpath::Selector;
+use std::{convert::TryFrom, fmt};
 
-use crate::config::{Mapping as ConfigMapping, Payload, TagValue as ConfigTagValue};
+use crate::config::{Mapping as ConfigMapping, Payload as ConfigPayload, TagValue as ConfigTagValue};
 use crate::interpolate::{InterpolatedName, InterpolatedNamePart};
 use crate::value::{ToInfluxType, ValueType};
 
@@ -50,10 +51,28 @@ impl TryFrom<&ConfigTagValue> for TagValue {
     }
 }
 
+pub enum Payload {
+    Raw,
+    Json {
+        value_field_selector: Selector,
+        timestamp_field_selector: Option<Selector>,
+    },
+}
+
+impl fmt::Debug for Payload {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        use Payload::*;
+        match self {
+            Raw => write!(f, "Raw"),
+            Json { .. } => write!(f, "Json {{ ... }}"),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Mapping {
     pub topic: Vec<TopicLevel>,
-    pub payload: Option<Payload>,
+    pub payload: Payload,
     pub field_name: InterpolatedName,
     pub value_type: ValueType,
     pub tags: Vec<(String, TagValue)>,
@@ -92,6 +111,23 @@ impl TryFrom<&ConfigMapping> for Mapping {
             Err(err) => Err(err),
         }?;
 
+        let payload = match &mapping.payload {
+            None => Payload::Raw,
+            Some(ConfigPayload::json { value_field_path, timestamp_field_path }) => {
+                let value_field_selector = Selector::new(&value_field_path)
+                    .map_err(|err| format!("Value field path '{}' is invalid: {}'", value_field_path, err))?;
+                let timestamp_field_selector = timestamp_field_path.as_ref()
+                    .map(|path| Selector::new(path)
+                        .map_err(|err| format!("Timestamp field path '{}' is invalid: {}'", path, err))
+                    )
+                    .transpose()?;
+                Payload::Json {
+                    value_field_selector,
+                    timestamp_field_selector,
+                }
+            }
+        };
+
         let tags = mapping
             .tags
             .iter()
@@ -109,7 +145,7 @@ impl TryFrom<&ConfigMapping> for Mapping {
 
         Ok(Mapping {
             topic,
-            payload: mapping.payload.as_ref().map(|p| p.clone()),
+            payload,
             field_name,
             value_type: mapping.value_type,
             tags,

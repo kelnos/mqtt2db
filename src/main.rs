@@ -1,12 +1,12 @@
 #[macro_use]
 extern crate log;
 
-use config::{Config, InfluxDBConfig, MqttAuth, MqttConfig, Payload, UserAuth};
+use config::{Config, InfluxDBConfig, MqttAuth, MqttConfig, UserAuth};
 use futures::TryFutureExt;
 use influxdb::InfluxDbWriteable;
 use influxdb::{Client as InfluxClient, Timestamp, Type};
 use log::LevelFilter;
-use mapping::{Mapping, TagValue, TopicLevel};
+use mapping::{Mapping, Payload, TagValue, TopicLevel};
 use rumqttc::{
     AsyncClient as MqttAsyncClient, Event, EventLoop as MqttEventLoop, Key, MqttOptions, Packet,
     Publish, QoS, SubscribeFilter, TlsConfiguration, Transport,
@@ -140,29 +140,29 @@ async fn handle_publish(
     let payload = String::from_utf8(Vec::from(publish.payload.as_ref()))
         .map_err(|err| format!("Invalid payload value: {}", err))?;
     let (influx_value, timestamp) = match &mapping.payload {
-        None => (payload.to_influx_type(mapping.value_type)?, None),
-        Some(Payload::json { value_field_name, timestamp_field_name }) => {
-            let payload_root: JsonValue = serde_json::from_str(&payload).map_err(|err| format!("Failed to parse payload as JSON: {}", err))?;
-            match payload_root {
-                JsonValue::Object(mut map) => map
-                    .remove(value_field_name)
-                    .ok_or_else(|| format!("Missing field '{}' in payload for '{}'", value_field_name, publish.topic))
-                    .and_then(|value| value.to_influx_type(mapping.value_type))
-                    .and_then(|influx_value| timestamp_field_name
-                        .as_ref()
-                        .and_then(|tsf| map
-                            .remove(tsf)
-                            .map(|timestamp_value| timestamp_value
-                                .as_u64()
-                                .map(|ts| ts as u128)
-                                .ok_or_else(|| format!("'{}' cannot be converted to timestamp", timestamp_value))
-                            )
-                        )
-                        .transpose()
-                        .map(|ts| (influx_value, ts))
-                    )?,
-                _ => return Err(format!("Payload for {} was not a JSON object", publish.topic)),
-            }
+        Payload::Raw => (payload.to_influx_type(mapping.value_type)?, None),
+        Payload::Json { value_field_selector, timestamp_field_selector } => {
+            let payload_root: JsonValue = serde_json::from_str(&payload)
+                .map_err(|err| format!("Failed to parse payload as JSON: {}", err))?;
+            let influx_value = value_field_selector
+                .find(&payload_root)
+                .next()
+                .ok_or_else(|| format!("Couldn't find value in payload on topic {}", publish.topic))
+                .and_then(|value| value.to_influx_type(mapping.value_type))?;
+            let timestamp = timestamp_field_selector
+                .as_ref()
+                .map(|selector| selector
+                    .find(&payload_root)
+                    .next()
+                    .ok_or_else(|| format!("Couldn't find timestamp in payload on topic {}", publish.topic))
+                    .and_then(|ts_value| ts_value
+                        .as_u64()
+                        .map(|ts| ts as u128)
+                        .ok_or_else(|| format!("'{}' cannot be converted to a timestamp", ts_value))
+                    )
+                )
+                .transpose()?;
+            (influx_value, timestamp)
         },
     };
 
