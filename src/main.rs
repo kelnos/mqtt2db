@@ -234,8 +234,7 @@ async fn run_event_loop(
                     warn!("Topic {} not found in mappings", publish.topic);
                 }
             }
-            Ok(Event::Incoming(_event)) => (),
-            Ok(Event::Outgoing(_event)) => (),
+            Ok(_) => (),
             Err(err) => warn!("Error from MQTT loop: {:#?}", err),
         }
     }
