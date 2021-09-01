@@ -113,7 +113,7 @@ impl TryFrom<&ConfigMapping> for Mapping {
 
         let payload = match &mapping.payload {
             None => Payload::Raw,
-            Some(ConfigPayload::json { value_field_path, timestamp_field_path }) => {
+            Some(ConfigPayload::Json { value_field_path, timestamp_field_path }) => {
                 let value_field_selector = Selector::new(&value_field_path)
                     .map_err(|err| format!("Value field path '{}' is invalid: {}'", value_field_path, err))?;
                 let timestamp_field_selector = timestamp_field_path.as_ref()

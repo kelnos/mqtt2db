@@ -45,20 +45,22 @@ pub struct UserAuth {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct InfluxDBConfig {
-    pub url: String,
-    pub auth: Option<UserAuth>,
-    pub db_name: String,
-    pub measurement: String,
+#[serde(rename_all = "kebab-case", tag = "type")]
+pub enum Database {
+    #[serde(rename_all = "camelCase")]
+    Influxdb {
+        url: String,
+        auth: Option<UserAuth>,
+        db_name: String,
+        measurement: String,
+    },
 }
 
 #[derive(Debug, Deserialize, Clone)]
-#[serde(rename_all = "camelCase", tag = "type")]
-#[allow(non_camel_case_types)]
+#[serde(rename_all = "kebab-case", tag = "type")]
 pub enum Payload {
     #[serde(rename_all = "camelCase")]
-    json {
+    Json {
         value_field_path: String,
         timestamp_field_path: Option<String>,
     },
@@ -79,7 +81,7 @@ pub struct Mapping {
 pub struct Config {
     pub log_level: Option<LevelFilter>,
     pub mqtt: MqttConfig,
-    pub database: InfluxDBConfig,
+    pub databases: Vec<Database>,
     pub mappings: Vec<Mapping>,
 }
 
