@@ -561,7 +561,7 @@ dependencies = [
  "crossbeam-queue",
  "num_cpus",
  "serde",
- "tokio 1.10.1",
+ "tokio 1.13.1",
 ]
 
 [[package]]
@@ -1127,7 +1127,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml",
- "tokio 1.10.1",
+ "tokio 1.13.1",
  "tokio-compat-02",
 ]
 
@@ -1475,7 +1475,7 @@ dependencies = [
  "mqttbytes",
  "pollster",
  "thiserror",
- "tokio 1.10.1",
+ "tokio 1.13.1",
  "tokio-rustls",
  "webpki",
 ]
@@ -1918,9 +1918,9 @@ dependencies = [
 
 [[package]]
 name = "tokio"
-version = "1.10.1"
+version = "1.13.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "92036be488bb6594459f2e03b60e42df6f937fe6ca5c5ffdcb539c6b84dc40f5"
+checksum = "52963f91310c08d91cb7bff5786dfc8b79642ab839e188187e92105dbfb9d2c8"
 dependencies = [
  "autocfg",
  "bytes 1.1.0",
@@ -1943,7 +1943,7 @@ dependencies = [
  "once_cell",
  "pin-project-lite 0.2.7",
  "tokio 0.2.25",
- "tokio 1.10.1",
+ "tokio 1.13.1",
  "tokio-stream",
 ]
 
@@ -1965,7 +1965,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bc6844de72e57df1980054b38be3a9f4702aba4858be64dd700181a8a6d0e1b6"
 dependencies = [
  "rustls 0.19.1",
- "tokio 1.10.1",
+ "tokio 1.13.1",
  "webpki",
 ]
 
@@ -1977,7 +1977,7 @@ checksum = "7b2f3f698253f03119ac0102beaa64f67a67e08074d03a22d18784104543727f"
 dependencies = [
  "futures-core",
  "pin-project-lite 0.2.7",
- "tokio 1.10.1",
+ "tokio 1.13.1",
 ]
 
 [[package]]
