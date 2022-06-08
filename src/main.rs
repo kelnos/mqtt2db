@@ -59,9 +59,7 @@ async fn init_mqtt(config: &MqttConfig) -> Result<(MqttAsyncClient, MqttEventLoo
         options.set_connection_timeout(connect_timeout.as_secs());
     }
     if let Some(keep_alive) = config.keep_alive {
-        let keep_alive_secs = u16::try_from(keep_alive.as_secs())
-            .map_err(|_| "Keep alive time must be between 0 and 65535".to_string())?;
-        options.set_keep_alive(keep_alive_secs);
+        options.set_keep_alive(keep_alive);
     }
     if let Some(ca_file) = &config.ca_file {
         let ca = file_to_bytevec(ca_file).await?;
@@ -187,11 +185,9 @@ async fn handle_publish(
             query = query.add_tag(&tag.0, value);
         }
 
-        use tokio_compat_02::FutureExt;
         database
             .client
             .query(&query)
-            .compat()
             .await
             .map_err(|err| format!("Failed to write to DB: {}", err))?;
         debug!("wrote to influx: {:?}", query);
