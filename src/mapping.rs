@@ -14,13 +14,13 @@ pub enum TopicLevel {
 }
 
 impl TryFrom<&str> for TopicLevel {
-    type Error = String;
+    type Error = anyhow::Error;
     fn try_from(s: &str) -> Result<Self, Self::Error> {
         match s {
             "+" => Ok(TopicLevel::SingleWildcard),
             "#" => Ok(TopicLevel::MultiWildcard),
             s if s.contains("+") || s.contains("#") => {
-                Err(format!("Topic level '{}' cannot contain '+' or '#'", s))
+                Err(anyhow!("Topic level '{}' cannot contain '+' or '#'", s))
             }
             s => Ok(TopicLevel::Literal(s.to_string())),
         }
@@ -34,7 +34,7 @@ pub enum TagValue {
 }
 
 impl TryFrom<&ConfigTagValue> for TagValue {
-    type Error = String;
+    type Error = anyhow::Error;
     fn try_from(tag_value: &ConfigTagValue) -> Result<Self, Self::Error> {
         match tag_value.r#type {
             ValueType::Text => {
@@ -79,19 +79,19 @@ pub struct Mapping {
 }
 
 impl TryFrom<&ConfigMapping> for Mapping {
-    type Error = String;
+    type Error = anyhow::Error;
     fn try_from(mapping: &ConfigMapping) -> Result<Self, Self::Error> {
         let topic = mapping
             .topic
             .split("/")
             .map(|level| TopicLevel::try_from(level))
-            .collect::<Result<Vec<TopicLevel>, String>>()?;
+            .collect::<anyhow::Result<Vec<TopicLevel>>>()?;
         let pre_multi_levels: Vec<&TopicLevel> = topic
             .iter()
             .take_while(|level| **level != TopicLevel::MultiWildcard)
             .collect();
         if pre_multi_levels.len() < topic.len() - 1 {
-            Err(format!(
+            Err(anyhow!(
                 "Topic '{}' has '#' wildcard before last topic level",
                 mapping.topic
             ))?;
@@ -103,7 +103,7 @@ impl TryFrom<&ConfigMapping> for Mapping {
             .count();
 
         let field_name = match InterpolatedName::try_from(mapping.field_name.as_str()) {
-            Ok(name) if find_max_ref(&name) > max_interp_ref => Err(format!(
+            Ok(name) if find_max_ref(&name) > max_interp_ref => Err(anyhow!(
                 "Topic '{}' has field name '{}' which has invalid references",
                 mapping.topic, mapping.field_name
             )),
@@ -115,10 +115,10 @@ impl TryFrom<&ConfigMapping> for Mapping {
             None => Payload::Raw,
             Some(ConfigPayload::Json { value_field_path, timestamp_field_path }) => {
                 let value_field_selector = Selector::new(&value_field_path)
-                    .map_err(|err| format!("Value field path '{}' is invalid: {}'", value_field_path, err))?;
+                    .map_err(|err| anyhow!("Value field path '{}' is invalid: {}'", value_field_path, err))?;
                 let timestamp_field_selector = timestamp_field_path.as_ref()
                     .map(|path| Selector::new(path)
-                        .map_err(|err| format!("Timestamp field path '{}' is invalid: {}'", path, err))
+                        .map_err(|err| anyhow!("Timestamp field path '{}' is invalid: {}'", path, err))
                     )
                     .transpose()?;
                 Payload::Json {
@@ -133,7 +133,7 @@ impl TryFrom<&ConfigMapping> for Mapping {
             .iter()
             .map(|tag| match TagValue::try_from(tag.1) {
                 Ok(TagValue::InterpolatedStr(ref name)) if find_max_ref(name) > max_interp_ref => {
-                    Err(format!(
+                    Err(anyhow!(
                         "Topic '{}' has tag value '{:?}' which has invalid references",
                         mapping.topic, tag.1
                     ))
@@ -141,7 +141,7 @@ impl TryFrom<&ConfigMapping> for Mapping {
                 Ok(value) => Ok((tag.0.clone(), value)),
                 Err(err) => Err(err),
             })
-            .collect::<Result<Vec<(String, TagValue)>, String>>()?;
+            .collect::<anyhow::Result<Vec<(String, TagValue)>>>()?;
 
         Ok(Mapping {
             topic,
@@ -167,7 +167,7 @@ mod test {
     use super::*;
 
     #[test]
-    fn mapping_parsing() -> Result<(), String> {
+    fn mapping_parsing() -> anyhow::Result<()> {
         use TopicLevel::*;
 
         fn mk_cfg_mapping(topic: &str) -> ConfigMapping {

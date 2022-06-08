@@ -2,9 +2,10 @@
 name = "mqtt2db"
 version = "0.1.0"
 authors = ["Brian J. Tarricone <brian@tarricone.org>"]
-edition = "2018"
+edition = "2021"
 
 [dependencies]
+anyhow = "1"
 chrono = { version = "0.4", features = ["serde"] }
 env_logger = "0.9"
 futures = "0.3"

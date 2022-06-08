@@ -19,8 +19,8 @@ pub enum InterpolatedNamePart {
 }
 
 impl TryFrom<&str> for InterpolatedName {
-    type Error = String;
-    fn try_from(s: &str) -> Result<InterpolatedName, String> {
+    type Error = anyhow::Error;
+    fn try_from(s: &str) -> Result<InterpolatedName, Self::Error> {
         let mut parts: Vec<InterpolatedNamePart> = Vec::new();
         let mut n_references: usize = 0;
         let mut pos: usize = 0;
@@ -28,7 +28,7 @@ impl TryFrom<&str> for InterpolatedName {
         for cap in REFERENCE_RE.captures_iter(s) {
             let mat = cap
                 .get(2)
-                .ok_or_else(|| format!("Unable to get full match for name '{}'", s))?;
+                .ok_or_else(|| anyhow!("Unable to get full match for name '{}'", s))?;
             if pos < mat.start() {
                 parts.push(InterpolatedNamePart::Literal(
                     s.chars()
@@ -42,12 +42,12 @@ impl TryFrom<&str> for InterpolatedName {
             let num_str = cap
                 .get(3)
                 .map(|mat1| mat1.as_str())
-                .ok_or_else(|| format!("Unable to get capture group for name '{}'", s))?;
+                .ok_or_else(|| anyhow!("Unable to get capture group for name '{}'", s))?;
             let num = num_str
                 .parse::<usize>()
-                .map_err(|_| format!("Couldn't parse '{}' as number for name '{}'", num_str, s))?;
+                .map_err(|_| anyhow!("Couldn't parse '{}' as number for name '{}'", num_str, s))?;
             if num == 0 {
-                Err(format!("Invalid reference number 0 for name '{}'", s))?;
+                Err(anyhow!("Invalid reference number 0 for name '{}'", s))?;
             }
             parts.push(InterpolatedNamePart::Reference(num));
             n_references += 1;
@@ -69,7 +69,7 @@ impl TryFrom<&str> for InterpolatedName {
 }
 
 impl InterpolatedName {
-    pub fn interpolate<S: AsRef<str>>(&self, reference_values: &Vec<S>) -> Result<String, String> {
+    pub fn interpolate<S: AsRef<str>>(&self, reference_values: &Vec<S>) -> anyhow::Result<String> {
         self.parts
             .iter()
             .fold(Ok(String::new()), |accum, part| match accum {
@@ -83,7 +83,7 @@ impl InterpolatedName {
                             accum.push_str(reference_value.as_ref());
                             Ok(accum)
                         }
-                        None => Err(format!(
+                        None => Err(anyhow!(
                             "Can't find reference number {} to interpolate",
                             num
                         )),
@@ -99,7 +99,7 @@ mod test {
     use super::*;
 
     #[test]
-    fn interpolated_name_parsing() -> Result<(), String> {
+    fn interpolated_name_parsing() -> anyhow::Result<()> {
         use InterpolatedNamePart::*;
 
         assert_eq!(
@@ -135,7 +135,7 @@ mod test {
     }
 
     #[test]
-    fn interpolation() -> Result<(), String> {
+    fn interpolation() -> anyhow::Result<()> {
         let interp = InterpolatedName::try_from("foo$1bar$2 baz $1")?;
         assert_eq!(
             "foofirstbarsecond baz first".to_string(),

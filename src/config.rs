@@ -86,12 +86,11 @@ pub struct Config {
 }
 
 impl Config {
-    pub fn parse<P: AsRef<Path>>(filename: P) -> Result<Config, String> {
-        let mut f = File::open(filename).map_err(|err| err.to_string())?;
+    pub fn parse<P: AsRef<Path>>(filename: P) -> anyhow::Result<Config> {
+        let mut f = File::open(filename)?;
         let mut contents = String::new();
-        f.read_to_string(&mut contents)
-            .map_err(|err| err.to_string())?;
-        let config: Config = from_str(&contents).map_err(|err| err.to_string())?;
+        f.read_to_string(&mut contents)?;
+        let config: Config = from_str(&contents)?;
         Ok(config)
     }
 }

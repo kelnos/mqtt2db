@@ -1,8 +1,9 @@
 #[macro_use]
+extern crate anyhow;
+#[macro_use]
 extern crate log;
 
 use config::{Config, Database as ConfigDatabase, MqttAuth, MqttConfig, UserAuth};
-use futures::TryFutureExt;
 use influxdb::InfluxDbWriteable;
 use influxdb::{Client as InfluxClient, Timestamp, Type};
 use mapping::{Mapping, Payload, TagValue, TopicLevel};
@@ -13,11 +14,9 @@ use rumqttc::{
 use serde_json::Value as JsonValue;
 use std::convert::TryFrom;
 use std::env;
-use std::path::Path;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tokio::fs::File;
-use tokio::io::AsyncReadExt;
+use tokio::fs;
 use value::ToInfluxType;
 
 mod config;
@@ -30,31 +29,8 @@ struct Database {
     measurement: String,
 }
 
-async fn init_mqtt(config: &MqttConfig) -> Result<(MqttAsyncClient, MqttEventLoop), String> {
-    async fn file_to_bytevec<P: AsRef<Path>>(file: P) -> Result<Vec<u8>, String> {
-        let mut f = File::open(&file)
-            .map_err(|err| {
-                format!(
-                    "Unable to open {}: {}",
-                    file.as_ref().to_string_lossy(),
-                    err
-                )
-            })
-            .await?;
-        let mut buf = Vec::new();
-        f.read_to_end(&mut buf)
-            .map_err(|err| {
-                format!(
-                    "Unable to read {}: {}",
-                    file.as_ref().to_string_lossy(),
-                    err
-                )
-            })
-            .await?;
-        Ok(buf)
-    }
-
-    let mut options = MqttOptions::new(config.client_id.clone(), config.host.clone(), config.port);
+async fn init_mqtt(config: &MqttConfig) -> anyhow::Result<(MqttAsyncClient, MqttEventLoop)> {
+    let mut options = MqttOptions::new(&config.client_id, &config.host, config.port);
     if let Some(connect_timeout) = config.connect_timeout {
         options.set_connection_timeout(connect_timeout.as_secs());
     }
@@ -62,7 +38,7 @@ async fn init_mqtt(config: &MqttConfig) -> Result<(MqttAsyncClient, MqttEventLoo
         options.set_keep_alive(keep_alive);
     }
     if let Some(ca_file) = &config.ca_file {
-        let ca = file_to_bytevec(ca_file).await?;
+        let ca = fs::read(ca_file).await?;
         options.set_transport(Transport::Tls(TlsConfiguration::Simple {
             ca,
             alpn: None,
@@ -71,8 +47,8 @@ async fn init_mqtt(config: &MqttConfig) -> Result<(MqttAsyncClient, MqttEventLoo
                 private_key_file,
             }) = &config.auth
             {
-                let cert = file_to_bytevec(cert_file).await?;
-                let private_key = file_to_bytevec(private_key_file).await?;
+                let cert = fs::read(cert_file).await?;
+                let private_key = fs::read(private_key_file).await?;
                 Some((cert, Key::RSA(private_key)))
             } else {
                 None
@@ -87,10 +63,10 @@ async fn init_mqtt(config: &MqttConfig) -> Result<(MqttAsyncClient, MqttEventLoo
     Ok(MqttAsyncClient::new(options, 100))
 }
 
-fn init_db(config: &ConfigDatabase) -> Result<Database, String> {
+fn init_db(config: &ConfigDatabase) -> anyhow::Result<Database> {
     match config {
         ConfigDatabase::Influxdb { url, auth, db_name, measurement } => {
-            let mut client = InfluxClient::new(url.clone(), db_name.clone());
+            let mut client = InfluxClient::new(url, db_name);
             if let Some(UserAuth { username, password }) = auth {
                 client = client.with_auth(username, password);
             }
@@ -105,7 +81,7 @@ fn init_db(config: &ConfigDatabase) -> Result<Database, String> {
 async fn init_subscriptions(
     mqtt_client: &mut MqttAsyncClient,
     topics: &Vec<&String>,
-) -> Result<(), String> {
+) -> anyhow::Result<()> {
     let topics: Vec<SubscribeFilter> = topics
         .iter()
         .map(|topic| {
@@ -115,8 +91,7 @@ async fn init_subscriptions(
         .collect();
     mqtt_client
         .subscribe_many(topics)
-        .await
-        .map_err(|err| err.to_string())?;
+        .await?;
     Ok(())
 }
 
@@ -124,7 +99,7 @@ async fn handle_publish(
     publish: &Publish,
     mapping: Arc<Mapping>,
     databases: Arc<Vec<Database>>,
-) -> Result<(), String> {
+) -> anyhow::Result<()> {
     debug!("Got publish: {:?}; {:?}", publish, publish.payload);
 
     let reference_values = publish
@@ -139,27 +114,27 @@ async fn handle_publish(
     let field_name = mapping.field_name.interpolate(&reference_values)?;
 
     let payload = String::from_utf8(Vec::from(publish.payload.as_ref()))
-        .map_err(|err| format!("Invalid payload value: {}", err))?;
+        .map_err(|err| anyhow!("Invalid payload value: {}", err))?;
     let (influx_value, timestamp) = match &mapping.payload {
         Payload::Raw => (payload.to_influx_type(mapping.value_type)?, None),
         Payload::Json { value_field_selector, timestamp_field_selector } => {
             let payload_root: JsonValue = serde_json::from_str(&payload)
-                .map_err(|err| format!("Failed to parse payload as JSON: {}", err))?;
+                .map_err(|err| anyhow!("Failed to parse payload as JSON: {}", err))?;
             let influx_value = value_field_selector
                 .find(&payload_root)
                 .next()
-                .ok_or_else(|| format!("Couldn't find value in payload on topic {}", publish.topic))
+                .ok_or_else(|| anyhow!("Couldn't find value in payload on topic {}", publish.topic))
                 .and_then(|value| value.to_influx_type(mapping.value_type))?;
             let timestamp = timestamp_field_selector
                 .as_ref()
                 .map(|selector| selector
                     .find(&payload_root)
                     .next()
-                    .ok_or_else(|| format!("Couldn't find timestamp in payload on topic {}", publish.topic))
+                    .ok_or_else(|| anyhow!("Couldn't find timestamp in payload on topic {}", publish.topic))
                     .and_then(|ts_value| ts_value
                         .as_u64()
                         .map(|ts| ts as u128)
-                        .ok_or_else(|| format!("'{}' cannot be converted to a timestamp", ts_value))
+                        .ok_or_else(|| anyhow!("'{}' cannot be converted to a timestamp", ts_value))
                     )
                 )
                 .transpose()?;
@@ -189,7 +164,7 @@ async fn handle_publish(
             .client
             .query(&query)
             .await
-            .map_err(|err| format!("Failed to write to DB: {}", err))?;
+            .map_err(|err| anyhow!("Failed to write to DB: {}", err))?;
         debug!("wrote to influx: {:?}", query);
     }
 
@@ -247,10 +222,10 @@ async fn run_event_loop(
 }
 
 #[tokio::main]
-async fn main() -> Result<(), String> {
+async fn main() -> anyhow::Result<()> {
     let config_filename = env::args()
         .nth(1)
-        .ok_or_else(|| "Missing argument 'config filename'")?;
+        .ok_or_else(|| anyhow!("Missing argument 'config filename'"))?;
     let config = Config::parse(&config_filename)?;
 
     let logger_env = env_logger::Env::new()
@@ -266,7 +241,7 @@ async fn main() -> Result<(), String> {
         .mappings
         .iter()
         .map(Mapping::try_from)
-        .collect::<Result<Vec<Mapping>, String>>()?;
+        .collect::<anyhow::Result<Vec<Mapping>>>()?;
 
     let (mut mqtt_client, mqtt_event_loop) = init_mqtt(&config.mqtt).await?;
     init_subscriptions(
@@ -282,7 +257,7 @@ async fn main() -> Result<(), String> {
     let databases = config.databases
         .iter()
         .map(init_db)
-        .collect::<Result<Vec<Database>, String>>()?;
+        .collect::<anyhow::Result<Vec<Database>>>()?;
 
     run_event_loop(mqtt_event_loop, mappings, databases).await;
 
