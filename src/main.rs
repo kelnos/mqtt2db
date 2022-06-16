@@ -145,11 +145,11 @@ async fn handle_publish(
     let timestamp = timestamp.unwrap_or_else(|| SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
-        .as_millis()
+        .as_nanos()
     );
 
     for database in databases.iter() {
-        let mut query = Timestamp::Milliseconds(timestamp)
+        let mut query = Timestamp::Nanoseconds(timestamp)
             .into_query(&database.measurement)
             .add_field(&field_name, influx_value.clone());
         for tag in mapping.tags.iter() {
